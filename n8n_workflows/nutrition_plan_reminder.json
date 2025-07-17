@@ -1,0 +1,505 @@
+{
+  "name": "Nutrition Plan Reminder",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "triggers": [
+                {
+                  "mode": "specificTimes",
+                  "values": [
+                    "08:00",
+                    "12:00",
+                    "16:00",
+                    "20:00"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "meal-reminder-trigger",
+      "name": "Meal Reminder Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "current_hour",
+              "value": "={{ $now.hour() }}",
+              "type": "number"
+            },
+            {
+              "id": "assignment-2",
+              "name": "meal_time",
+              "value": "={{ $json.current_hour === 8 ? 'breakfast' : ($json.current_hour === 12 ? 'lunch' : ($json.current_hour === 16 ? 'snack' : 'dinner')) }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-3",
+              "name": "meal_name",
+              "value": "={{ $json.meal_time === 'breakfast' ? 'Desayuno' : ($json.meal_time === 'lunch' ? 'Almuerzo' : ($json.meal_time === 'snack' ? 'Merienda' : 'Cena')) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "determine-meal-time",
+      "name": "Determine Meal Time",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/patients/active-with-reminders",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "get-active-patients",
+      "name": "Get Active Patients",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-patients-exist",
+      "name": "Check if Patients Exist",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "split-patients",
+      "name": "Split Patients",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1120,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/patients/{{ $json.id }}/current-meal/{{ $('Determine Meal Time').first().json.meal_time }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "get-current-meal",
+      "name": "Get Current Meal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1340,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.reminders_enabled }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-reminders-enabled",
+      "name": "Check Reminders Enabled",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "message",
+              "value": "=🍽️ **{{ $('Determine Meal Time').first().json.meal_name }}** - {{ $json.name }}\n\n{% if $json.current_meal %}\n**Tu comida de hoy:**\n{{ $json.current_meal.description }}\n\n**Preparación:**\n{{ $json.current_meal.preparation }}\n\n**Macros:**\n🔹 Calorías: {{ $json.current_meal.calories }} kcal\n🔹 Proteínas: {{ $json.current_meal.protein }}g\n🔹 Carbohidratos: {{ $json.current_meal.carbs }}g\n🔹 Grasas: {{ $json.current_meal.fat }}g\n\n{% if $json.current_meal.alternatives %}\n**Alternativas:**\n{% for alt in $json.current_meal.alternatives %}\n• {{ alt.name }}\n{% endfor %}\n{% endif %}\n\n¡Buen provecho! 😊\n{% else %}\n¡Es hora de tu {{ $('Determine Meal Time').first().json.meal_name.toLowerCase() }}! 🍽️\n\nRecuerda seguir tu plan nutricional. Si tienes dudas sobre las preparaciones, puedes usar /ayuda.\n\n¡Cuida tu alimentación! 💪\n{% endif %}\n\n_Responde STOP para desactivar recordatorios_",
+              "type": "string"
+            },
+            {
+              "id": "assignment-2",
+              "name": "telegram_user_id",
+              "value": "={{ $json.telegram_user_id }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-3",
+              "name": "patient_id",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-reminder-message",
+      "name": "Prepare Reminder Message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        1780,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": \"{{ $json.telegram_user_id }}\",\n  \"text\": \"{{ $json.message }}\",\n  \"parse_mode\": \"Markdown\",\n  \"reply_markup\": {\n    \"inline_keyboard\": [\n      [\n        {\n          \"text\": \"✅ Listo\",\n          \"callback_data\": \"meal_completed_{{ $json.patient_id }}_{{ $('Determine Meal Time').first().json.meal_time }}\"\n        },\n        {\n          \"text\": \"🔄 Reemplazar\",\n          \"callback_data\": \"meal_replace_{{ $json.patient_id }}_{{ $('Determine Meal Time').first().json.meal_time }}\"\n        }\n      ],\n      [\n        {\n          \"text\": \"🔕 Desactivar recordatorios\",\n          \"callback_data\": \"disable_reminders_{{ $json.patient_id }}\"\n        }\n      ]\n    ]\n  }\n}"
+      },
+      "id": "send-reminder-message",
+      "name": "Send Reminder Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2000,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-message-sent",
+      "name": "Check Message Sent",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2220,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/patients/{{ $json.patient_id }}/reminder-sent",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"meal_time\": \"{{ $('Determine Meal Time').first().json.meal_time }}\",\n  \"sent_at\": \"{{ $now.toISOString() }}\"\n}"
+      },
+      "id": "log-reminder-sent",
+      "name": "Log Reminder Sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2440,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/notifications/error",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"type\": \"reminder_error\",\n  \"patient_id\": \"{{ $json.patient_id }}\",\n  \"error\": \"{{ $json.description }}\",\n  \"meal_time\": \"{{ $('Determine Meal Time').first().json.meal_time }}\",\n  \"timestamp\": \"{{ $now.toISOString() }}\"\n}"
+      },
+      "id": "log-reminder-error",
+      "name": "Log Reminder Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2440,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "message": "No active patients with reminders enabled",
+        "options": {}
+      },
+      "id": "no-patients-message",
+      "name": "No Patients Message",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "message": "=Patient {{ $json.name }} has reminders disabled",
+        "options": {}
+      },
+      "id": "reminders-disabled-message",
+      "name": "Reminders Disabled Message",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1780,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Meal Reminder Trigger": {
+      "main": [
+        [
+          {
+            "node": "Determine Meal Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine Meal Time": {
+      "main": [
+        [
+          {
+            "node": "Get Active Patients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Active Patients": {
+      "main": [
+        [
+          {
+            "node": "Check if Patients Exist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check if Patients Exist": {
+      "main": [
+        [
+          {
+            "node": "Split Patients",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Patients Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Patients": {
+      "main": [
+        [
+          {
+            "node": "Get Current Meal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Current Meal": {
+      "main": [
+        [
+          {
+            "node": "Check Reminders Enabled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Reminders Enabled": {
+      "main": [
+        [
+          {
+            "node": "Prepare Reminder Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reminders Disabled Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Reminder Message": {
+      "main": [
+        [
+          {
+            "node": "Send Reminder Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Reminder Message": {
+      "main": [
+        [
+          {
+            "node": "Check Message Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Message Sent": {
+      "main": [
+        [
+          {
+            "node": "Log Reminder Sent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Reminder Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "timezone": "America/Argentina/Buenos_Aires",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": false,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "staticData": {},
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-15T10:00:00.000Z",
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

@@ -1,0 +1,284 @@
+{
+  "name": "Scheduled Task Template",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "triggers": [
+                {
+                  "mode": "everyX",
+                  "value": 24
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "execution_timestamp",
+              "value": "={{ $now.toISOString() }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-2",
+              "name": "task_name",
+              "value": "scheduled_task",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-task-data",
+      "name": "Prepare Task Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/scheduled-tasks/execute",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"task_name\": \"{{ $json.task_name }}\",\n  \"execution_timestamp\": \"{{ $json.execution_timestamp }}\"\n}"
+      },
+      "id": "execute-scheduled-task",
+      "name": "Execute Scheduled Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-task-success",
+      "name": "Check Task Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/scheduled-tasks/log",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"task_name\": \"{{ $('Prepare Task Data').first().json.task_name }}\",\n  \"status\": \"success\",\n  \"execution_timestamp\": \"{{ $('Prepare Task Data').first().json.execution_timestamp }}\",\n  \"result\": {{ JSON.stringify($json) }}\n}"
+      },
+      "id": "log-task-success",
+      "name": "Log Task Success",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/scheduled-tasks/log",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"task_name\": \"{{ $('Prepare Task Data').first().json.task_name }}\",\n  \"status\": \"failed\",\n  \"execution_timestamp\": \"{{ $('Prepare Task Data').first().json.execution_timestamp }}\",\n  \"error\": \"{{ $json.error || 'Unknown error' }}\"\n}"
+      },
+      "id": "log-task-error",
+      "name": "Log Task Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "message": "=Scheduled task {{ $json.task_name }} completed successfully",
+        "options": {}
+      },
+      "id": "task-success-message",
+      "name": "Task Success Message",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1340,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "message": "=Scheduled task {{ $json.task_name }} failed with error: {{ $json.error }}",
+        "options": {}
+      },
+      "id": "task-error-message",
+      "name": "Task Error Message",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1340,
+        380
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Prepare Task Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Task Data": {
+      "main": [
+        [
+          {
+            "node": "Execute Scheduled Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Scheduled Task": {
+      "main": [
+        [
+          {
+            "node": "Check Task Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Task Success": {
+      "main": [
+        [
+          {
+            "node": "Log Task Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Task Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Task Success": {
+      "main": [
+        [
+          {
+            "node": "Task Success Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Task Error": {
+      "main": [
+        [
+          {
+            "node": "Task Error Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "timezone": "America/Argentina/Buenos_Aires",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": false,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "staticData": {},
+  "tags": ["template"],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-15T10:00:00.000Z",
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

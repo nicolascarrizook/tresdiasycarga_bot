@@ -1,0 +1,726 @@
+{
+  "name": "API Health Monitoring",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "triggers": [
+                {
+                  "mode": "everyX",
+                  "value": 5
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "health-check-trigger",
+      "name": "Health Check Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "check_timestamp",
+              "value": "={{ $now.toISOString() }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-2",
+              "name": "services_to_check",
+              "value": "=[\n  {\n    \"name\": \"FastAPI\",\n    \"url\": \"http://api:8000/health\",\n    \"timeout\": 5000,\n    \"critical\": true\n  },\n  {\n    \"name\": \"PostgreSQL\",\n    \"url\": \"http://api:8000/health/database\",\n    \"timeout\": 5000,\n    \"critical\": true\n  },\n  {\n    \"name\": \"Redis\",\n    \"url\": \"http://api:8000/health/redis\",\n    \"timeout\": 5000,\n    \"critical\": true\n  },\n  {\n    \"name\": \"ChromaDB\",\n    \"url\": \"http://api:8000/health/chroma\",\n    \"timeout\": 5000,\n    \"critical\": true\n  },\n  {\n    \"name\": \"OpenAI\",\n    \"url\": \"http://api:8000/health/openai\",\n    \"timeout\": 10000,\n    \"critical\": false\n  },\n  {\n    \"name\": \"Telegram Bot\",\n    \"url\": \"http://telegram_bot:8080/health\",\n    \"timeout\": 5000,\n    \"critical\": true\n  }\n]",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-health-checks",
+      "name": "Prepare Health Checks",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "split-services",
+      "name": "Split Services",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "timeout": "={{ $json.timeout }}",
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "check-service-health",
+      "name": "Check Service Health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "service_name",
+              "value": "={{ $json.name }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-2",
+              "name": "service_url",
+              "value": "={{ $json.url }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-3",
+              "name": "is_critical",
+              "value": "={{ $json.critical }}",
+              "type": "boolean"
+            },
+            {
+              "id": "assignment-4",
+              "name": "status",
+              "value": "={{ $('Check Service Health').first().json.status >= 200 && $('Check Service Health').first().json.status < 300 ? 'healthy' : 'unhealthy' }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-5",
+              "name": "response_time",
+              "value": "={{ $('Check Service Health').first().json.headers['x-response-time'] || 'N/A' }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-6",
+              "name": "status_code",
+              "value": "={{ $('Check Service Health').first().json.status }}",
+              "type": "number"
+            },
+            {
+              "id": "assignment-7",
+              "name": "error_message",
+              "value": "={{ $('Check Service Health').first().json.status >= 400 ? $('Check Service Health').first().json.data.error : null }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "process-health-result",
+      "name": "Process Health Result",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "unhealthy",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-service-unhealthy",
+      "name": "Check Service Unhealthy",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/monitoring/alert",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"service_name\": \"{{ $json.service_name }}\",\n  \"status\": \"{{ $json.status }}\",\n  \"is_critical\": {{ $json.is_critical }},\n  \"status_code\": {{ $json.status_code }},\n  \"error_message\": \"{{ $json.error_message }}\",\n  \"response_time\": \"{{ $json.response_time }}\",\n  \"timestamp\": \"{{ $('Prepare Health Checks').first().json.check_timestamp }}\",\n  \"alert_type\": \"service_down\"\n}"
+      },
+      "id": "log-service-alert",
+      "name": "Log Service Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1560,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.is_critical }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-critical-service",
+      "name": "Check Critical Service",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": \"{{ $env.ADMIN_TELEGRAM_ID }}\",\n  \"text\": \"🚨 **ALERTA CRÍTICA** - Sistema Mayra\\n\\n❌ **Servicio:** {{ $json.service_name }}\\n🔗 **URL:** {{ $json.service_url }}\\n📊 **Estado:** {{ $json.status_code }}\\n⏱️ **Tiempo:** {{ $json.response_time }}\\n\\n{% if $json.error_message %}\\n💬 **Error:** {{ $json.error_message }}\\n{% endif %}\\n\\n🕐 **Timestamp:** {{ $('Prepare Health Checks').first().json.check_timestamp }}\\n\\n⚠️ **Acción requerida:** Revisar inmediatamente el servicio\",\n  \"parse_mode\": \"Markdown\"\n}"
+      },
+      "id": "send-critical-alert",
+      "name": "Send Critical Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2000,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": \"{{ $env.ADMIN_TELEGRAM_ID }}\",\n  \"text\": \"⚠️ **Alerta** - Sistema Mayra\\n\\n📊 **Servicio:** {{ $json.service_name }}\\n🔗 **URL:** {{ $json.service_url }}\\n📊 **Estado:** {{ $json.status_code }}\\n⏱️ **Tiempo:** {{ $json.response_time }}\\n\\n{% if $json.error_message %}\\n💬 **Error:** {{ $json.error_message }}\\n{% endif %}\\n\\n🕐 **Timestamp:** {{ $('Prepare Health Checks').first().json.check_timestamp }}\\n\\n📋 **Tipo:** Servicio no crítico\",\n  \"parse_mode\": \"Markdown\"\n}"
+      },
+      "id": "send-non-critical-alert",
+      "name": "Send Non-Critical Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2000,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/monitoring/log",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"service_name\": \"{{ $json.service_name }}\",\n  \"status\": \"{{ $json.status }}\",\n  \"status_code\": {{ $json.status_code }},\n  \"response_time\": \"{{ $json.response_time }}\",\n  \"timestamp\": \"{{ $('Prepare Health Checks').first().json.check_timestamp }}\",\n  \"is_critical\": {{ $json.is_critical }}\n}"
+      },
+      "id": "log-health-check",
+      "name": "Log Health Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1560,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "triggers": [
+                {
+                  "mode": "everyX",
+                  "value": 1
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "performance-check-trigger",
+      "name": "Performance Check Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/monitoring/performance",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "get-performance-metrics",
+      "name": "Get Performance Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.cpu_usage }}",
+              "rightValue": 80,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            },
+            {
+              "id": "condition-2",
+              "leftValue": "={{ $json.memory_usage }}",
+              "rightValue": 85,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            },
+            {
+              "id": "condition-3",
+              "leftValue": "={{ $json.disk_usage }}",
+              "rightValue": 90,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "or"
+        }
+      },
+      "id": "check-performance-thresholds",
+      "name": "Check Performance Thresholds",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "alert_message",
+              "value": "=📊 **Alerta de Rendimiento** - Sistema Mayra\\n\\n{% if $json.cpu_usage > 80 %}\\n🔥 **CPU:** {{ $json.cpu_usage }}% (Límite: 80%)\\n{% endif %}\\n{% if $json.memory_usage > 85 %}\\n💾 **Memoria:** {{ $json.memory_usage }}% (Límite: 85%)\\n{% endif %}\\n{% if $json.disk_usage > 90 %}\\n💿 **Disco:** {{ $json.disk_usage }}% (Límite: 90%)\\n{% endif %}\\n\\n📈 **Métricas adicionales:**\\n• Conexiones DB activas: {{ $json.db_connections }}\\n• Requests/min: {{ $json.requests_per_minute }}\\n• Tiempo resp. promedio: {{ $json.avg_response_time }}ms\\n\\n🕐 **Timestamp:** {{ $now.format('DD/MM/YYYY HH:mm:ss') }}\\n\\n⚠️ **Acción sugerida:** Revisar recursos del sistema",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-performance-alert",
+      "name": "Format Performance Alert",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        900,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": \"{{ $env.ADMIN_TELEGRAM_ID }}\",\n  \"text\": \"{{ $json.alert_message }}\",\n  \"parse_mode\": \"Markdown\"\n}"
+      },
+      "id": "send-performance-alert",
+      "name": "Send Performance Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/monitoring/performance/log",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"cpu_usage\": {{ $json.cpu_usage }},\n  \"memory_usage\": {{ $json.memory_usage }},\n  \"disk_usage\": {{ $json.disk_usage }},\n  \"db_connections\": {{ $json.db_connections }},\n  \"requests_per_minute\": {{ $json.requests_per_minute }},\n  \"avg_response_time\": {{ $json.avg_response_time }},\n  \"timestamp\": \"{{ $now.toISOString() }}\",\n  \"alert_triggered\": {{ $json.cpu_usage > 80 || $json.memory_usage > 85 || $json.disk_usage > 90 ? 'true' : 'false' }}\n}"
+      },
+      "id": "log-performance-metrics",
+      "name": "Log Performance Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        660
+      ]
+    },
+    {
+      "parameters": {
+        "message": "All services are healthy",
+        "options": {}
+      },
+      "id": "healthy-service-message",
+      "name": "Healthy Service Message",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1560,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "message": "Performance metrics within normal thresholds",
+        "options": {}
+      },
+      "id": "performance-ok-message",
+      "name": "Performance OK Message",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        900,
+        720
+      ]
+    }
+  ],
+  "connections": {
+    "Health Check Trigger": {
+      "main": [
+        [
+          {
+            "node": "Prepare Health Checks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Health Checks": {
+      "main": [
+        [
+          {
+            "node": "Split Services",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Services": {
+      "main": [
+        [
+          {
+            "node": "Check Service Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Service Health": {
+      "main": [
+        [
+          {
+            "node": "Process Health Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Health Result": {
+      "main": [
+        [
+          {
+            "node": "Check Service Unhealthy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Service Unhealthy": {
+      "main": [
+        [
+          {
+            "node": "Log Service Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Health Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Service Alert": {
+      "main": [
+        [
+          {
+            "node": "Check Critical Service",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Critical Service": {
+      "main": [
+        [
+          {
+            "node": "Send Critical Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Non-Critical Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Health Check": {
+      "main": [
+        [
+          {
+            "node": "Healthy Service Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Performance Check Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Performance Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Performance Metrics": {
+      "main": [
+        [
+          {
+            "node": "Check Performance Thresholds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Performance Thresholds": {
+      "main": [
+        [
+          {
+            "node": "Format Performance Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Performance OK Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Performance Alert": {
+      "main": [
+        [
+          {
+            "node": "Send Performance Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Performance Alert": {
+      "main": [
+        [
+          {
+            "node": "Log Performance Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Performance Metrics": {
+      "main": [
+        [
+          {
+            "node": "Log Performance Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Performance OK Message": {
+      "main": [
+        [
+          {
+            "node": "Log Performance Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "timezone": "America/Argentina/Buenos_Aires",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": false,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "staticData": {},
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-15T10:00:00.000Z",
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

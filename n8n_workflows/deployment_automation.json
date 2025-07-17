@@ -1,0 +1,493 @@
+{
+  "name": "Sistema Mayra - Deployment Automation",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "e8f8c8f8-1234-4567-8901-234567890123",
+      "name": "Start",
+      "type": "n8n-nodes-base.start",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "deployment-webhook",
+        "responseMode": "onReceived",
+        "responseData": "allEntries",
+        "options": {}
+      },
+      "id": "webhook-1234",
+      "name": "Deployment Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "webhookId": "deployment-webhook-id"
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "cd /opt/sistema-mayra && git pull origin main",
+        "resource": "command",
+        "privateKey": "={{$credentials.sshKey}}",
+        "host": "={{$json[\"host\"]}}",
+        "username": "={{$json[\"user\"]}}"
+      },
+      "id": "ssh-git-pull",
+      "name": "Git Pull Latest",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "command": "cd /opt/sistema-mayra && ./scripts/deployment/backup.sh",
+        "resource": "command"
+      },
+      "id": "ssh-backup",
+      "name": "Create Backup",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "command": "cd /opt/sistema-mayra && docker-compose -f docker-compose.prod.yml build",
+        "resource": "command"
+      },
+      "id": "ssh-build",
+      "name": "Build Docker Images",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "command": "cd /opt/sistema-mayra && docker-compose -f docker-compose.prod.yml down && docker-compose -f docker-compose.prod.yml up -d",
+        "resource": "command"
+      },
+      "id": "ssh-deploy",
+      "name": "Deploy Services",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "command": "cd /opt/sistema-mayra && docker-compose -f docker-compose.prod.yml exec -T api alembic upgrade head",
+        "resource": "command"
+      },
+      "id": "ssh-migrate",
+      "name": "Run Migrations",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:8000/health",
+        "responseFormat": "json",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "http-health",
+      "name": "Health Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{$credentials.telegramAdminId}}",
+        "text": "🚀 *Sistema Mayra Deployment*\n\nStatus: ✅ SUCCESS\n\nVersion: {{$json[\"version\"]}}\nEnvironment: Production\nDeployed by: {{$json[\"deployed_by\"]}}\nTime: {{$now.format('YYYY-MM-DD HH:mm:ss')}}\n\nAll services are healthy!",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "telegram-success",
+      "name": "Success Notification",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1850, 200]
+    },
+    {
+      "parameters": {
+        "chatId": "={{$credentials.telegramAdminId}}",
+        "text": "❌ *Sistema Mayra Deployment*\n\nStatus: FAILED\n\nError: {{$json[\"error\"]}}\nStep: {{$json[\"failed_step\"]}}\nTime: {{$now.format('YYYY-MM-DD HH:mm:ss')}}\n\nRolling back...",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "telegram-error",
+      "name": "Error Notification",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1250, 500]
+    },
+    {
+      "parameters": {
+        "command": "cd /opt/sistema-mayra && ./scripts/deployment/rollback.sh",
+        "resource": "command"
+      },
+      "id": "ssh-rollback",
+      "name": "Rollback",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [1450, 500]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json[\"status_code\"]}}",
+              "operation": "equal",
+              "value2": 200
+            }
+          ]
+        }
+      },
+      "id": "if-health-ok",
+      "name": "Health OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1750, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Log deployment details\nconst deploymentLog = {\n  timestamp: new Date().toISOString(),\n  version: $json.version || 'latest',\n  deployed_by: $json.deployed_by || 'n8n-automation',\n  environment: 'production',\n  host: $json.host,\n  status: 'started'\n};\n\n// Store in database or file\nreturn deploymentLog;"
+      },
+      "id": "function-log",
+      "name": "Log Deployment",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [550, 400]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Validate webhook payload\nconst requiredFields = ['host', 'user', 'version'];\nconst errors = [];\n\nfor (const field of requiredFields) {\n  if (!$input.first().json[field]) {\n    errors.push(`Missing required field: ${field}`);\n  }\n}\n\nif (errors.length > 0) {\n  throw new Error(errors.join(', '));\n}\n\n// Add deployment metadata\nconst items = $input.all();\nitems[0].json.deployment_id = Math.random().toString(36).substr(2, 9);\nitems[0].json.timestamp = new Date().toISOString();\n\nreturn items;"
+      },
+      "id": "code-validate",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [350, 300]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "collection": "deployments",
+        "document": "={{JSON.stringify($json)}}"
+      },
+      "id": "mongo-log",
+      "name": "Store Deployment Log",
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1,
+      "position": [1950, 300]
+    },
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "value": 5,
+              "unit": "minutes"
+            }
+          ]
+        }
+      },
+      "id": "cron-monitor",
+      "name": "Monitoring Schedule",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [250, 600]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:8000/health",
+        "responseFormat": "json",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "http-monitor-api",
+      "name": "Monitor API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [450, 600]
+    },
+    {
+      "parameters": {
+        "command": "docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' | grep mayra",
+        "resource": "command"
+      },
+      "id": "ssh-monitor-docker",
+      "name": "Monitor Docker",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [650, 600]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Check service health\nconst apiHealth = $node[\"Monitor API\"].json;\nconst dockerStatus = $node[\"Monitor Docker\"].json;\n\nconst alerts = [];\n\n// Check API\nif (!apiHealth || apiHealth.status !== 'healthy') {\n  alerts.push('API is not healthy');\n}\n\n// Check Docker containers\nconst requiredContainers = ['mayra_api_prod', 'mayra_db_prod', 'mayra_redis_prod'];\nfor (const container of requiredContainers) {\n  if (!dockerStatus.stdout.includes(container)) {\n    alerts.push(`Container ${container} is not running`);\n  }\n}\n\nif (alerts.length > 0) {\n  return {\n    healthy: false,\n    alerts: alerts,\n    timestamp: new Date().toISOString()\n  };\n}\n\nreturn {\n  healthy: true,\n  timestamp: new Date().toISOString()\n};"
+      },
+      "id": "function-check-health",
+      "name": "Check Health",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [850, 600]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json[\"healthy\"]}}",
+              "value2": false
+            }
+          ]
+        }
+      },
+      "id": "if-unhealthy",
+      "name": "Unhealthy?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1050, 600]
+    },
+    {
+      "parameters": {
+        "chatId": "={{$credentials.telegramAdminId}}",
+        "text": "⚠️ *Sistema Mayra Health Alert*\n\nIssues detected:\n{{$json[\"alerts\"].join('\\n')}}\n\nTime: {{$json[\"timestamp\"]}}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "telegram-health-alert",
+      "name": "Health Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1250, 700]
+    }
+  ],
+  "connections": {
+    "Deployment Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Git Pull Latest",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log Deployment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Git Pull Latest": {
+      "main": [
+        [
+          {
+            "node": "Create Backup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Backup": {
+      "main": [
+        [
+          {
+            "node": "Build Docker Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Docker Images": {
+      "main": [
+        [
+          {
+            "node": "Deploy Services",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deploy Services": {
+      "main": [
+        [
+          {
+            "node": "Run Migrations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Migrations": {
+      "main": [
+        [
+          {
+            "node": "Health Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Health Check": {
+      "main": [
+        [
+          {
+            "node": "Health OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Health OK?": {
+      "main": [
+        [
+          {
+            "node": "Success Notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Success Notification": {
+      "main": [
+        [
+          {
+            "node": "Store Deployment Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Notification": {
+      "main": [
+        [
+          {
+            "node": "Rollback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Monitoring Schedule": {
+      "main": [
+        [
+          {
+            "node": "Monitor API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Monitor Docker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Monitor API": {
+      "main": [
+        [
+          {
+            "node": "Check Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Monitor Docker": {
+      "main": [
+        [
+          {
+            "node": "Check Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Health": {
+      "main": [
+        [
+          {
+            "node": "Unhealthy?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unhealthy?": {
+      "main": [
+        [
+          {
+            "node": "Health Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "deployment",
+      "createdAt": "2024-01-15T12:00:00.000Z",
+      "updatedAt": "2024-01-15T12:00:00.000Z"
+    },
+    {
+      "name": "automation",
+      "createdAt": "2024-01-15T12:00:00.000Z",
+      "updatedAt": "2024-01-15T12:00:00.000Z"
+    }
+  ],
+  "triggerCount": 2,
+  "updatedAt": "2024-01-15T12:00:00.000Z",
+  "versionId": "deployment-v1"
+}

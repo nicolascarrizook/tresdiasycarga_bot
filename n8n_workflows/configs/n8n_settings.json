@@ -1,0 +1,135 @@
+{
+  "n8n_configuration": {
+    "general": {
+      "timezone": "America/Argentina/Buenos_Aires",
+      "locale": "es",
+      "defaultExecutionTimeout": 300000,
+      "maxExecutionTimeout": 600000,
+      "defaultRetryAttempts": 3,
+      "defaultRetryDelay": 1000
+    },
+    "security": {
+      "basicAuth": {
+        "active": true,
+        "user": "admin",
+        "password": "${N8N_BASIC_AUTH_PASSWORD}"
+      },
+      "jwtAuth": {
+        "active": false,
+        "jwtSecret": "${N8N_JWT_SECRET}",
+        "jwtExpiration": "7d"
+      },
+      "cors": {
+        "enabled": true,
+        "origin": ["https://yourdomain.com", "http://localhost:3000"],
+        "credentials": true
+      }
+    },
+    "database": {
+      "type": "postgres",
+      "postgresdb": {
+        "host": "postgres",
+        "port": 5432,
+        "database": "n8n",
+        "username": "n8n_user",
+        "password": "${N8N_DB_PASSWORD}",
+        "ssl": false
+      }
+    },
+    "endpoints": {
+      "webhook": {
+        "baseUrl": "https://yourdomain.com/webhook",
+        "testBaseUrl": "https://yourdomain.com/webhook-test"
+      },
+      "rest": {
+        "baseUrl": "https://yourdomain.com/api/v1",
+        "basicAuth": true
+      }
+    },
+    "logging": {
+      "level": "info",
+      "outputs": ["console", "file"],
+      "file": {
+        "location": "/var/log/n8n/n8n.log",
+        "maxSize": "10m",
+        "maxFiles": 5
+      }
+    },
+    "executions": {
+      "process": "main",
+      "mode": "regular",
+      "saveDataOnError": "all",
+      "saveDataOnSuccess": "all",
+      "saveDataManualExecutions": false,
+      "pruneData": true,
+      "pruneDataMaxAge": 336,
+      "pruneDataMaxCount": 10000
+    },
+    "nodes": {
+      "exclude": [],
+      "include": [
+        "n8n-nodes-base.httpRequest",
+        "n8n-nodes-base.webhook",
+        "n8n-nodes-base.scheduleTrigger",
+        "n8n-nodes-base.set",
+        "n8n-nodes-base.if",
+        "n8n-nodes-base.splitInBatches",
+        "n8n-nodes-base.executeCommand",
+        "n8n-nodes-base.noOp",
+        "n8n-nodes-base.respondToWebhook"
+      ]
+    },
+    "external_hooks": {
+      "workflow": {
+        "postExecute": ["http://api:8000/api/n8n/webhook/workflow-executed"]
+      }
+    },
+    "personalization": {
+      "enabled": true,
+      "settings": {
+        "company_name": "Sistema Mayra",
+        "deployment_type": "production",
+        "notification_preferences": {
+          "workflow_errors": true,
+          "workflow_success": false,
+          "system_alerts": true
+        }
+      }
+    }
+  },
+  "environment_variables": {
+    "required": [
+      "N8N_BASIC_AUTH_PASSWORD",
+      "N8N_DB_PASSWORD",
+      "N8N_JWT_SECRET",
+      "TELEGRAM_BOT_TOKEN",
+      "ADMIN_TELEGRAM_ID",
+      "OPENAI_API_KEY",
+      "POSTGRES_USER",
+      "POSTGRES_PASSWORD",
+      "POSTGRES_DB"
+    ],
+    "optional": [
+      "N8N_WEBHOOK_URL",
+      "N8N_ENCRYPTION_KEY",
+      "N8N_METRICS_PREFIX",
+      "N8N_CUSTOM_EXTENSIONS"
+    ]
+  },
+  "workflow_settings": {
+    "default_settings": {
+      "timezone": "America/Argentina/Buenos_Aires",
+      "saveExecutionProgress": true,
+      "saveManualExecutions": false,
+      "saveDataErrorExecution": "all",
+      "saveDataSuccessExecution": "all",
+      "callerPolicy": "workflowsFromSameOwner",
+      "errorWorkflow": "error_handler_workflow"
+    },
+    "performance": {
+      "maxConcurrentExecutions": 10,
+      "maxQueueSize": 100,
+      "executionTimeout": 300000
+    }
+  }
+}

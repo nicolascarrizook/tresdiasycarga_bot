@@ -1,0 +1,640 @@
+{
+  "name": "Automated Data Backup",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "triggers": [
+                {
+                  "mode": "everyX",
+                  "value": 6
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "backup-schedule",
+      "name": "Backup Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "backup_timestamp",
+              "value": "={{ $now.format('YYYY-MM-DD_HH-mm-ss') }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-2",
+              "name": "backup_date",
+              "value": "={{ $now.format('YYYY-MM-DD') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-backup-info",
+      "name": "Prepare Backup Info",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "mkdir -p /backups/postgres/{{ $json.backup_date }}"
+      },
+      "id": "create-backup-directory",
+      "name": "Create Backup Directory",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "pg_dump -h postgres -U $POSTGRES_USER -d $POSTGRES_DB --no-password > /backups/postgres/{{ $json.backup_date }}/nutrition_db_{{ $json.backup_timestamp }}.sql"
+      },
+      "id": "backup-postgres",
+      "name": "Backup PostgreSQL",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        900,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "command": "tar -czf /backups/chroma/chroma_db_{{ $json.backup_timestamp }}.tar.gz -C /app/chroma_db ."
+      },
+      "id": "backup-chroma",
+      "name": "Backup ChromaDB",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "redis-cli --rdb /backups/redis/redis_{{ $json.backup_timestamp }}.rdb"
+      },
+      "id": "backup-redis",
+      "name": "Backup Redis",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        900,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/backup/files",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "backup-application-files",
+      "name": "Backup Application Files",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-backup-success",
+      "name": "Check Backup Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "backup_files",
+              "value": "=[\n  \"/backups/postgres/{{ $json.backup_date }}/nutrition_db_{{ $json.backup_timestamp }}.sql\",\n  \"/backups/chroma/chroma_db_{{ $json.backup_timestamp }}.tar.gz\",\n  \"/backups/redis/redis_{{ $json.backup_timestamp }}.rdb\"\n]",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-file-list",
+      "name": "Prepare File List",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        1560,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "split-backup-files",
+      "name": "Split Backup Files",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1780,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/backup/upload",
+        "options": {
+          "bodyContentType": "multipart-form-data",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "file",
+              "inputDataFieldName": "data",
+              "type": "n8n-nodes-base.uploadFile"
+            },
+            {
+              "name": "backup_type",
+              "value": "={{ $json.includes('postgres') ? 'postgres' : ($json.includes('chroma') ? 'chroma' : 'redis') }}"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{ $('Prepare Backup Info').first().json.backup_timestamp }}"
+            }
+          ]
+        }
+      },
+      "id": "upload-to-cloud",
+      "name": "Upload to Cloud Storage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2000,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "command": "find /backups -type f -mtime +7 -name '*.sql' -o -name '*.tar.gz' -o -name '*.rdb' | head -20"
+      },
+      "id": "find-old-backups",
+      "name": "Find Old Backups",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        2220,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.stdout }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-old-backups-exist",
+      "name": "Check Old Backups Exist",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2440,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "command": "find /backups -type f -mtime +7 -name '*.sql' -o -name '*.tar.gz' -o -name '*.rdb' | head -20 | xargs rm -f"
+      },
+      "id": "cleanup-old-backups",
+      "name": "Cleanup Old Backups",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        2660,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/backup/log",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"backup_id\": \"{{ $('Prepare Backup Info').first().json.backup_timestamp }}\",\n  \"status\": \"success\",\n  \"files_backed_up\": {{ $('Prepare File List').first().json.backup_files.length }},\n  \"size_mb\": {{ $json.total_size_mb || 0 }},\n  \"timestamp\": \"{{ $now.toISOString() }}\",\n  \"retention_days\": 7\n}"
+      },
+      "id": "log-backup-success",
+      "name": "Log Backup Success",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2660,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": \"{{ $env.ADMIN_TELEGRAM_ID }}\",\n  \"text\": \"✅ **Backup Completado** - {{ $('Prepare Backup Info').first().json.backup_timestamp }}\\n\\n🗄️ **Archivos respaldados:**\\n• PostgreSQL: ✅\\n• ChromaDB: ✅\\n• Redis: ✅\\n• Archivos de aplicación: ✅\\n\\n📊 **Detalles:**\\n• Timestamp: {{ $('Prepare Backup Info').first().json.backup_timestamp }}\\n• Archivos limpiados: {{ $json.stdout ? 'Sí' : 'No' }}\\n• Estado: Exitoso\\n\\n🔄 Próximo backup automático en 6 horas\",\n  \"parse_mode\": \"Markdown\"\n}"
+      },
+      "id": "notify-backup-success",
+      "name": "Notify Backup Success",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2880,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/backup/log",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"backup_id\": \"{{ $('Prepare Backup Info').first().json.backup_timestamp }}\",\n  \"status\": \"failed\",\n  \"error\": \"{{ $json.error || 'Unknown error' }}\",\n  \"timestamp\": \"{{ $now.toISOString() }}\"\n}"
+      },
+      "id": "log-backup-error",
+      "name": "Log Backup Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1560,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": \"{{ $env.ADMIN_TELEGRAM_ID }}\",\n  \"text\": \"❌ **Error en Backup** - {{ $('Prepare Backup Info').first().json.backup_timestamp }}\\n\\n🚨 **Error:**\\n{{ $json.error || 'Error desconocido' }}\\n\\n⏰ **Timestamp:** {{ $('Prepare Backup Info').first().json.backup_timestamp }}\\n\\n🔧 **Acción requerida:** Revisar logs del sistema y corregir el problema.\\n\\n📋 **Próximo intento:** En 6 horas (automático)\",\n  \"parse_mode\": \"Markdown\"\n}"
+      },
+      "id": "notify-backup-error",
+      "name": "Notify Backup Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1780,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "message": "No old backups found to cleanup",
+        "options": {}
+      },
+      "id": "no-cleanup-needed",
+      "name": "No Cleanup Needed",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2660,
+        260
+      ]
+    }
+  ],
+  "connections": {
+    "Backup Schedule": {
+      "main": [
+        [
+          {
+            "node": "Prepare Backup Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Backup Info": {
+      "main": [
+        [
+          {
+            "node": "Create Backup Directory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Backup Directory": {
+      "main": [
+        [
+          {
+            "node": "Backup PostgreSQL",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Backup ChromaDB",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Backup Redis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backup PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Backup Application Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backup ChromaDB": {
+      "main": [
+        [
+          {
+            "node": "Backup Application Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backup Redis": {
+      "main": [
+        [
+          {
+            "node": "Backup Application Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backup Application Files": {
+      "main": [
+        [
+          {
+            "node": "Check Backup Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Backup Success": {
+      "main": [
+        [
+          {
+            "node": "Prepare File List",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Backup Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare File List": {
+      "main": [
+        [
+          {
+            "node": "Split Backup Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Backup Files": {
+      "main": [
+        [
+          {
+            "node": "Upload to Cloud Storage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to Cloud Storage": {
+      "main": [
+        [
+          {
+            "node": "Find Old Backups",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Old Backups": {
+      "main": [
+        [
+          {
+            "node": "Check Old Backups Exist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Old Backups Exist": {
+      "main": [
+        [
+          {
+            "node": "Cleanup Old Backups",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Cleanup Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cleanup Old Backups": {
+      "main": [
+        [
+          {
+            "node": "Log Backup Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Backup Success": {
+      "main": [
+        [
+          {
+            "node": "Notify Backup Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Backup Error": {
+      "main": [
+        [
+          {
+            "node": "Notify Backup Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Cleanup Needed": {
+      "main": [
+        [
+          {
+            "node": "Log Backup Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "timezone": "America/Argentina/Buenos_Aires",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": false,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "staticData": {},
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-15T10:00:00.000Z",
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

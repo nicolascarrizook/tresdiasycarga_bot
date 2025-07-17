@@ -1,0 +1,511 @@
+{
+  "name": "Patient Follow-up Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggers": [
+                {
+                  "mode": "everyX",
+                  "value": 1
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/patients/follow-up-due",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "get-patients-due",
+      "name": "Get Patients Due for Follow-up",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-patients-exist",
+      "name": "Check if Patients Exist",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "split-patients",
+      "name": "Split Patients",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        900,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "patient_id",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-2",
+              "name": "telegram_user_id",
+              "value": "={{ $json.telegram_user_id }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-3",
+              "name": "name",
+              "value": "={{ $json.name }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-4",
+              "name": "days_since_plan",
+              "value": "={{ $json.days_since_plan }}",
+              "type": "number"
+            },
+            {
+              "id": "assignment-5",
+              "name": "follow_up_type",
+              "value": "={{ $json.days_since_plan <= 3 ? 'check_in' : ($json.days_since_plan <= 7 ? 'weekly' : 'monthly') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-patient-data",
+      "name": "Prepare Patient Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        1120,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.follow_up_type }}",
+              "rightValue": "check_in",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-follow-up-type",
+      "name": "Check Follow-up Type",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "message",
+              "value": "¡Hola {{ $json.name }}! 👋\n\nEspero que estés bien. Han pasado {{ $json.days_since_plan }} días desde que recibiste tu plan nutricional.\n\n¿Cómo te has sentido con el plan?\n• ¿Has podido seguirlo sin problemas?\n• ¿Tienes alguna duda sobre las preparaciones?\n• ¿Necesitas algún ajuste?\n\nRecuerda que puedes usar /control para actualizar tu plan o /reemplazar si necesitas cambiar alguna comida.\n\n¡Estoy aquí para ayudarte! 💪",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-checkin-message",
+      "name": "Prepare Check-in Message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        1560,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "message",
+              "value": "¡Hola {{ $json.name }}! 🌟\n\n{% if $json.follow_up_type === 'weekly' %}\nHa pasado una semana desde tu último plan. Es un buen momento para evaluar tu progreso:\n\n• ¿Has notado cambios en tu energía?\n• ¿Cómo te sientes con las porciones?\n• ¿Has tenido algún inconveniente?\n\nSi necesitas ajustes, puedes usar /control para actualizar tu información.\n{% else %}\nHa pasado un mes desde tu último plan. ¡Es hora de evaluar tu progreso!\n\n• ¿Has alcanzado tus objetivos?\n• ¿Necesitas un nuevo plan?\n• ¿Quieres cambiar algo?\n\nUsa /control para generar un nuevo plan con tus datos actualizados.\n{% endif %}\n\n¡Sigue así! 💪",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-regular-message",
+      "name": "Prepare Regular Message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        1560,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": \"{{ $json.telegram_user_id }}\",\n  \"text\": \"{{ $json.message }}\",\n  \"parse_mode\": \"HTML\"\n}"
+      },
+      "id": "send-telegram-message",
+      "name": "Send Telegram Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1780,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/patients/{{ $json.patient_id }}/follow-up-sent",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"follow_up_type\": \"{{ $json.follow_up_type }}\",\n  \"sent_at\": \"{{ $now.toISOString() }}\"\n}"
+      },
+      "id": "log-follow-up-sent",
+      "name": "Log Follow-up Sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2000,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-telegram-error",
+      "name": "Check Telegram Error",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/notifications/error",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"type\": \"telegram_error\",\n  \"patient_id\": \"{{ $json.patient_id }}\",\n  \"error\": \"{{ $json.description }}\",\n  \"timestamp\": \"{{ $now.toISOString() }}\"\n}"
+      },
+      "id": "log-error",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2220,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "message": "=Patient follow-up completed for {{ $json.name }} ({{ $json.telegram_user_id }})",
+        "options": {}
+      },
+      "id": "success-message",
+      "name": "Success Message",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2220,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "message": "No patients due for follow-up today",
+        "options": {}
+      },
+      "id": "no-patients-message",
+      "name": "No Patients Message",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        900,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Patients Due for Follow-up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Patients Due for Follow-up": {
+      "main": [
+        [
+          {
+            "node": "Check if Patients Exist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check if Patients Exist": {
+      "main": [
+        [
+          {
+            "node": "Split Patients",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Patients Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Patients": {
+      "main": [
+        [
+          {
+            "node": "Prepare Patient Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Patient Data": {
+      "main": [
+        [
+          {
+            "node": "Check Follow-up Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Follow-up Type": {
+      "main": [
+        [
+          {
+            "node": "Prepare Check-in Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Regular Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Check-in Message": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Regular Message": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Telegram Message": {
+      "main": [
+        [
+          {
+            "node": "Check Telegram Error",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log Follow-up Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Telegram Error": {
+      "main": [
+        [
+          {
+            "node": "Log Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Follow-up Sent": {
+      "main": [
+        [
+          {
+            "node": "Success Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "timezone": "America/Argentina/Buenos_Aires",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": false,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "staticData": {},
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-15T10:00:00.000Z",
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

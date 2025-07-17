@@ -1,0 +1,129 @@
+{
+  "webhook_endpoints": {
+    "telegram": {
+      "path": "telegram-webhook",
+      "method": "POST",
+      "authentication": "none",
+      "description": "Webhook for Telegram bot integration",
+      "workflow_file": "telegram_integration.json",
+      "expected_payload": {
+        "update_id": "number",
+        "message": {
+          "message_id": "number",
+          "from": {
+            "id": "number",
+            "is_bot": "boolean",
+            "first_name": "string",
+            "username": "string"
+          },
+          "chat": {
+            "id": "number",
+            "first_name": "string",
+            "username": "string",
+            "type": "string"
+          },
+          "date": "number",
+          "text": "string"
+        },
+        "callback_query": {
+          "id": "string",
+          "from": {
+            "id": "number",
+            "is_bot": "boolean",
+            "first_name": "string",
+            "username": "string"
+          },
+          "message": "object",
+          "data": "string"
+        }
+      }
+    },
+    "notifications": {
+      "path": "notification-webhook",
+      "method": "POST",
+      "authentication": "basic",
+      "description": "Generic notification webhook",
+      "workflow_file": "notification_template.json",
+      "expected_payload": {
+        "type": "string",
+        "message": "string",
+        "recipient": "string",
+        "priority": "string"
+      }
+    },
+    "backup_notifications": {
+      "path": "backup-webhook",
+      "method": "POST",
+      "authentication": "basic",
+      "description": "Backup completion notifications",
+      "workflow_file": "data_backup.json",
+      "expected_payload": {
+        "backup_id": "string",
+        "status": "string",
+        "files_backed_up": "number",
+        "timestamp": "string"
+      }
+    },
+    "health_check": {
+      "path": "health-check",
+      "method": "GET",
+      "authentication": "none",
+      "description": "Health check endpoint for n8n workflows",
+      "workflow_file": "basic_webhook_template.json",
+      "expected_payload": {}
+    },
+    "manual_trigger": {
+      "path": "manual-trigger",
+      "method": "POST",
+      "authentication": "basic",
+      "description": "Manual trigger for workflows",
+      "workflow_file": "scheduled_task_template.json",
+      "expected_payload": {
+        "workflow_name": "string",
+        "parameters": "object"
+      }
+    }
+  },
+  "webhook_security": {
+    "rate_limiting": {
+      "enabled": true,
+      "max_requests_per_minute": 60,
+      "max_requests_per_hour": 1000
+    },
+    "ip_whitelist": {
+      "enabled": false,
+      "allowed_ips": [
+        "127.0.0.1",
+        "::1"
+      ]
+    },
+    "payload_validation": {
+      "enabled": true,
+      "max_payload_size": "1MB",
+      "required_headers": {
+        "telegram": ["Content-Type"],
+        "notifications": ["Content-Type", "Authorization"]
+      }
+    }
+  },
+  "webhook_monitoring": {
+    "logging": {
+      "enabled": true,
+      "log_level": "info",
+      "include_payload": false,
+      "include_response": true
+    },
+    "metrics": {
+      "enabled": true,
+      "track_response_time": true,
+      "track_error_rate": true,
+      "track_request_volume": true
+    },
+    "alerting": {
+      "enabled": true,
+      "error_threshold": 10,
+      "response_time_threshold": 5000,
+      "notification_channel": "telegram"
+    }
+  }
+}

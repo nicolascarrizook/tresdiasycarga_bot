@@ -1,0 +1,770 @@
+{
+  "name": "Periodic Report Generation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "value": "0 8 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "weekly-report-trigger",
+      "name": "Weekly Report Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "report_week_start",
+              "value": "={{ $now.startOf('week').subtract(1, 'week').format('YYYY-MM-DD') }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-2",
+              "name": "report_week_end",
+              "value": "={{ $now.startOf('week').subtract(1, 'day').format('YYYY-MM-DD') }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-3",
+              "name": "report_timestamp",
+              "value": "={{ $now.format('YYYY-MM-DD_HH-mm-ss') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-report-period",
+      "name": "Set Report Period",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/reports/patient-statistics",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"start_date\": \"{{ $json.report_week_start }}\",\n  \"end_date\": \"{{ $json.report_week_end }}\"\n}"
+      },
+      "id": "get-patient-statistics",
+      "name": "Get Patient Statistics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/reports/plan-statistics",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"start_date\": \"{{ $json.report_week_start }}\",\n  \"end_date\": \"{{ $json.report_week_end }}\"\n}"
+      },
+      "id": "get-plan-statistics",
+      "name": "Get Plan Statistics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/reports/system-health",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"start_date\": \"{{ $json.report_week_start }}\",\n  \"end_date\": \"{{ $json.report_week_end }}\"\n}"
+      },
+      "id": "get-system-health",
+      "name": "Get System Health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/reports/telegram-bot-stats",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"start_date\": \"{{ $json.report_week_start }}\",\n  \"end_date\": \"{{ $json.report_week_end }}\"\n}"
+      },
+      "id": "get-telegram-stats",
+      "name": "Get Telegram Stats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "patient_stats",
+              "value": "={{ $('Get Patient Statistics').first().json }}",
+              "type": "object"
+            },
+            {
+              "id": "assignment-2",
+              "name": "plan_stats",
+              "value": "={{ $('Get Plan Statistics').first().json }}",
+              "type": "object"
+            },
+            {
+              "id": "assignment-3",
+              "name": "system_health",
+              "value": "={{ $('Get System Health').first().json }}",
+              "type": "object"
+            },
+            {
+              "id": "assignment-4",
+              "name": "telegram_stats",
+              "value": "={{ $('Get Telegram Stats').first().json }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "merge-report-data",
+      "name": "Merge Report Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        900,
+        350
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "admin_report",
+              "value": "=📊 **Reporte Semanal - Sistema Mayra**\n🗓️ **Período:** {{ $('Set Report Period').first().json.report_week_start }} al {{ $('Set Report Period').first().json.report_week_end }}\n\n👥 **PACIENTES**\n• Nuevos registros: {{ $json.patient_stats.new_patients || 0 }}\n• Pacientes activos: {{ $json.patient_stats.active_patients || 0 }}\n• Total de pacientes: {{ $json.patient_stats.total_patients || 0 }}\n\n🍽️ **PLANES NUTRICIONALES**\n• Planes generados: {{ $json.plan_stats.plans_generated || 0 }}\n• Planes tipo Motor 1: {{ $json.plan_stats.motor1_plans || 0 }}\n• Planes tipo Motor 2: {{ $json.plan_stats.motor2_plans || 0 }}\n• Planes tipo Motor 3: {{ $json.plan_stats.motor3_plans || 0 }}\n• Tasa de éxito: {{ Math.round(($json.plan_stats.successful_plans / $json.plan_stats.plans_generated) * 100) || 0 }}%\n\n🤖 **TELEGRAM BOT**\n• Mensajes procesados: {{ $json.telegram_stats.messages_processed || 0 }}\n• Comandos ejecutados: {{ $json.telegram_stats.commands_executed || 0 }}\n• Errores: {{ $json.telegram_stats.errors || 0 }}\n• Usuarios únicos: {{ $json.telegram_stats.unique_users || 0 }}\n\n⚙️ **SISTEMA**\n• Uptime: {{ $json.system_health.uptime || 'N/A' }}\n• CPU promedio: {{ $json.system_health.avg_cpu || 'N/A' }}%\n• Memoria promedio: {{ $json.system_health.avg_memory || 'N/A' }}%\n• Errores API: {{ $json.system_health.api_errors || 0 }}\n• Respuesta API promedio: {{ $json.system_health.avg_response_time || 'N/A' }}ms\n\n💾 **BACKUPS**\n• Backups completados: {{ $json.system_health.successful_backups || 0 }}\n• Backups fallidos: {{ $json.system_health.failed_backups || 0 }}\n• Último backup: {{ $json.system_health.last_backup || 'N/A' }}\n\n🔍 **MÉTRICAS DESTACADAS**\n• Comida más solicitada: {{ $json.plan_stats.most_requested_meal || 'N/A' }}\n• Restricción más común: {{ $json.patient_stats.most_common_restriction || 'N/A' }}\n• Hora pico de uso: {{ $json.telegram_stats.peak_hour || 'N/A' }}\n\n📈 **TENDENCIAS**\n• Crecimiento semanal: {{ $json.patient_stats.weekly_growth || '+0' }}%\n• Satisfacción promedio: {{ $json.plan_stats.avg_satisfaction || 'N/A' }}/5\n\n_Generado automáticamente el {{ $now.format('DD/MM/YYYY HH:mm') }}_",
+              "type": "string"
+            },
+            {
+              "id": "assignment-2",
+              "name": "user_report",
+              "value": "=📊 **Resumen Semanal - Sistema Mayra**\n🗓️ Del {{ $('Set Report Period').first().json.report_week_start }} al {{ $('Set Report Period').first().json.report_week_end }}\n\n✨ **Esta semana hemos ayudado a:**\n• {{ $json.patient_stats.new_patients || 0 }} nuevos pacientes\n• Generado {{ $json.plan_stats.plans_generated || 0 }} planes nutricionales\n• {{ $json.telegram_stats.unique_users || 0 }} usuarios activos\n\n🎯 **Logros destacados:**\n• {{ Math.round(($json.plan_stats.successful_plans / $json.plan_stats.plans_generated) * 100) || 0 }}% de planes exitosos\n• {{ $json.telegram_stats.messages_processed || 0 }} consultas atendidas\n• Sistema funcionando al {{ Math.round(($json.system_health.uptime_percentage || 0) * 100) }}%\n\n💪 **¡Seguimos creciendo juntos!**\n\n_Sistema Mayra - Nutrición Inteligente_",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-reports",
+      "name": "Format Reports",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        1120,
+        350
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/reports/generate-pdf",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"report_type\": \"weekly\",\n  \"period_start\": \"{{ $('Set Report Period').first().json.report_week_start }}\",\n  \"period_end\": \"{{ $('Set Report Period').first().json.report_week_end }}\",\n  \"data\": {\n    \"patient_stats\": {{ JSON.stringify($json.patient_stats) }},\n    \"plan_stats\": {{ JSON.stringify($json.plan_stats) }},\n    \"system_health\": {{ JSON.stringify($json.system_health) }},\n    \"telegram_stats\": {{ JSON.stringify($json.telegram_stats) }}\n  }\n}"
+      },
+      "id": "generate-pdf-report",
+      "name": "Generate PDF Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1340,
+        350
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": \"{{ $env.ADMIN_TELEGRAM_ID }}\",\n  \"text\": \"{{ $('Format Reports').first().json.admin_report }}\",\n  \"parse_mode\": \"Markdown\"\n}"
+      },
+      "id": "send-admin-report",
+      "name": "Send Admin Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1560,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.pdf_path }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-pdf-generated",
+      "name": "Check PDF Generated",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        350
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendDocument",
+        "options": {
+          "bodyContentType": "multipart-form-data",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $env.ADMIN_TELEGRAM_ID }}"
+            },
+            {
+              "name": "document",
+              "inputDataFieldName": "pdf_file",
+              "type": "n8n-nodes-base.uploadFile"
+            },
+            {
+              "name": "caption",
+              "value": "📄 Reporte detallado en PDF - Semana {{ $('Set Report Period').first().json.report_week_start }} al {{ $('Set Report Period').first().json.report_week_end }}"
+            }
+          ]
+        }
+      },
+      "id": "send-pdf-report",
+      "name": "Send PDF Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1780,
+        310
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/patients/active-subscribers",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "get-subscribers",
+      "name": "Get Subscribers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2000,
+        350
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-subscribers-exist",
+      "name": "Check Subscribers Exist",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2220,
+        350
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "split-subscribers",
+      "name": "Split Subscribers",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2440,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": \"{{ $json.telegram_user_id }}\",\n  \"text\": \"{{ $('Format Reports').first().json.user_report }}\",\n  \"parse_mode\": \"Markdown\"\n}"
+      },
+      "id": "send-user-report",
+      "name": "Send User Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2660,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/reports/save",
+        "options": {
+          "bodyContentType": "json",
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"report_type\": \"weekly\",\n  \"period_start\": \"{{ $('Set Report Period').first().json.report_week_start }}\",\n  \"period_end\": \"{{ $('Set Report Period').first().json.report_week_end }}\",\n  \"generated_at\": \"{{ $now.toISOString() }}\",\n  \"pdf_path\": \"{{ $('Generate PDF Report').first().json.pdf_path }}\",\n  \"data\": {\n    \"patient_stats\": {{ JSON.stringify($('Merge Report Data').first().json.patient_stats) }},\n    \"plan_stats\": {{ JSON.stringify($('Merge Report Data').first().json.plan_stats) }},\n    \"system_health\": {{ JSON.stringify($('Merge Report Data').first().json.system_health) }},\n    \"telegram_stats\": {{ JSON.stringify($('Merge Report Data').first().json.telegram_stats) }}\n  }\n}"
+      },
+      "id": "save-report-record",
+      "name": "Save Report Record",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2880,
+        350
+      ]
+    },
+    {
+      "parameters": {
+        "message": "Weekly report generation completed successfully",
+        "options": {}
+      },
+      "id": "completion-message",
+      "name": "Completion Message",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3100,
+        350
+      ]
+    },
+    {
+      "parameters": {
+        "message": "No subscribers found for user reports",
+        "options": {}
+      },
+      "id": "no-subscribers-message",
+      "name": "No Subscribers Message",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2440,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "message": "PDF report could not be generated",
+        "options": {}
+      },
+      "id": "pdf-error-message",
+      "name": "PDF Error Message",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1780,
+        390
+      ]
+    }
+  ],
+  "connections": {
+    "Weekly Report Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set Report Period",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Report Period": {
+      "main": [
+        [
+          {
+            "node": "Get Patient Statistics",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Plan Statistics",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get System Health",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Telegram Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Patient Statistics": {
+      "main": [
+        [
+          {
+            "node": "Merge Report Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Plan Statistics": {
+      "main": [
+        [
+          {
+            "node": "Merge Report Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get System Health": {
+      "main": [
+        [
+          {
+            "node": "Merge Report Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Telegram Stats": {
+      "main": [
+        [
+          {
+            "node": "Merge Report Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Report Data": {
+      "main": [
+        [
+          {
+            "node": "Format Reports",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Reports": {
+      "main": [
+        [
+          {
+            "node": "Generate PDF Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate PDF Report": {
+      "main": [
+        [
+          {
+            "node": "Send Admin Report",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check PDF Generated",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Admin Report": {
+      "main": [
+        [
+          {
+            "node": "Get Subscribers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check PDF Generated": {
+      "main": [
+        [
+          {
+            "node": "Send PDF Report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PDF Error Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send PDF Report": {
+      "main": [
+        [
+          {
+            "node": "Get Subscribers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Subscribers": {
+      "main": [
+        [
+          {
+            "node": "Check Subscribers Exist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Subscribers Exist": {
+      "main": [
+        [
+          {
+            "node": "Split Subscribers",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Subscribers Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Subscribers": {
+      "main": [
+        [
+          {
+            "node": "Send User Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send User Report": {
+      "main": [
+        [
+          {
+            "node": "Save Report Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Report Record": {
+      "main": [
+        [
+          {
+            "node": "Completion Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Subscribers Message": {
+      "main": [
+        [
+          {
+            "node": "Save Report Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDF Error Message": {
+      "main": [
+        [
+          {
+            "node": "Get Subscribers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "timezone": "America/Argentina/Buenos_Aires",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": false,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "staticData": {},
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-15T10:00:00.000Z",
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
